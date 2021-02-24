@@ -38,7 +38,16 @@ async function processUserMessage(msg) {
   }
 
   if (msg.content.startsWith(`${prefix}help`)) {
-    let helpOut = "Echo: Echo your message\n\n" + "Come: Come\n\nLeave: Leave";
+    let helpOut = 
+    "**play**: Plays a song based on keywords or a youtube link\n\n" +
+    "**skip**: Skips the current song\n\n" +
+    "**stop/leave**: Stops playing music and disconnects\n\n" +
+    "**pause**: Pauses the current song\n\n" +
+    "**resume**: Resumes the current song\n\n" +
+    "**queue**: Lists the songs currently in queue\n\n" +
+    "**volume**: Sets the volume between 1 and 10\n\n" +
+    "**echoN**: Echos your message N times\n\n";
+
     const embed = new MessageEmbed()
       .setTitle('List of Commands')
       .setColor('#0000000')
@@ -64,6 +73,7 @@ async function processUserMessage(msg) {
     if (!ServerMedia) {
       ServerMedia = {
         isPlaying: false,
+        isPaused: false,
         songs: [],
         volume: 5,
         voiceChannel: null,
@@ -82,10 +92,9 @@ async function processUserMessage(msg) {
       ServerMedia.connection = connection;
     })
 
-    if (body.startsWith('https://www.youtube.com/watch?v=') || body.startsWith('https://music.youtube.com/watch?v=')) {
+    if (body.startsWith('https://www.youtube.com/watch?v=') || body.startsWith('https://music.youtube.com/watch?v=') || body.startsWith('https://youtu.be/')) {
       
-      const results = await ytdl.getInfo(body, { type: 'video' });
-
+    const results = await ytdl.getInfo(body, { type: 'video' });
       let musicStructure = {
         vidID: results.videoDetails.videoId,
         title: results.videoDetails.title,
@@ -180,17 +189,45 @@ async function processUserMessage(msg) {
   }
 
   //TODO
-  // if (msg.content.startsWith(`${prefix}pause`)) {
-  //   let ServerMedia = servers.get(msg.guild.id);
-  //   if (ServerMedia.isPlaying)
-  //     ServerMedia.connection.dispatcher.pause();
-  // }
+  if (msg.content.startsWith(`${prefix}pause`)) {
+    let ServerMedia = servers.get(msg.guild.id);
+    if (ServerMedia.isPlaying){
+      if(!ServerMedia.isPaused){
+        ServerMedia.isPaused = true;
+        const embed = new MessageEmbed().setTitle('Song paused!').setColor('#0000000');
+        ServerMedia.msgChannel.send(embed);
+        ServerMedia.connection.dispatcher.pause();
+      }
+      else{
+        const embed = new MessageEmbed().setTitle('Song is already paused!').setColor('#0000000');
+        return msg.channel.send(embed);
+      }
+    }
+    else{
+      const embed = new MessageEmbed().setTitle('Cannot pause a song that is not playing!').setColor('#0000000');
+      return msg.channel.send(embed);
+    }
+  }
 
-  // if (msg.content.startsWith(`${prefix}resume`)) {
-  //   let ServerMedia = servers.get(msg.guild.id);
-  //   if (ServerMedia.isPlaying)
-  //     ServerMedia.connection.dispatcher.resume();
-  // }
+  if (msg.content.startsWith(`${prefix}resume`)) {
+    let ServerMedia = servers.get(msg.guild.id);
+    if (ServerMedia.isPlaying){
+      if(ServerMedia.isPaused){
+        ServerMedia.isPaused = false;
+        const embed = new MessageEmbed().setTitle('Resuming song!').setColor('#0000000');
+        ServerMedia.msgChannel.send(embed);
+        ServerMedia.connection.dispatcher.resume();
+      }
+      else{
+        const embed = new MessageEmbed().setTitle('Song is already playing!').setColor('#0000000');
+        return msg.channel.send(embed);
+      }
+    }
+    else{
+      const embed = new MessageEmbed().setTitle('Cannot resume a song that is not playing!').setColor('#0000000');
+      return msg.channel.send(embed);
+    }
+  }
 
   /**
    * TODO:
@@ -216,9 +253,9 @@ async function addMusic(musicStructure, msg, ServerMedia) {
   }
   else {
     const embed = new MessageEmbed()
-      .setTitle('Added Song to Queue')
+      .setTitle('Added Song to Queue: '+ musicStructure.title)
       .setColor('#0000000')
-      .setDescription(musicStructure.title + '\nby ' + musicStructure.channel + '\n' + musicStructure.link).setThumbnail(musicStructure.thumbnail);
+      .setDescription('by ' + musicStructure.channel + '\n' + musicStructure.link).setThumbnail(musicStructure.thumbnail);
 
     msg.channel.send(embed);
     servers.set(msg.guild.id, ServerMedia);
@@ -230,17 +267,18 @@ async function play(guildId) {
 
   let currentSong = ServerMedia.songs.shift();
   const embed = new MessageEmbed()
-    .setTitle('Now playing: ' + currentSong.title)
+    .setTitle('Now Playing: ' + currentSong.title)
     .setColor('#0000000')
     .setDescription('by ' + currentSong.channel + '\n' + currentSong.link)
     .setThumbnail(currentSong.thumbnail);
   ServerMedia.msgChannel.send(embed);
 
   ServerMedia.isPlaying = true;
-  ServerMedia.connection.play(await ytdl(currentSong.vidID, { filter: 'audioonly', quality: 'highestaudio' }), { seek: 0, volume: 1, type: 'opus', bitrate: 'auto' })
+  ServerMedia.connection.play(await ytdl(currentSong.vidID, { filter: 'audioonly', quality: 'highestaudio', highWaterMark: 1<<24  }), { seek: 0, volume: 1, type: 'opus', bitrate: 'auto', highWaterMark: 1<<15 })
     .on('finish', () => {
       if (ServerMedia.songs.length != 0) {
         console.log('Done playing, playing next song!');
+        servers.set(guildId, ServerMedia);
         play(guildId);
       }
       else {
@@ -256,7 +294,16 @@ async function play(guildId) {
 function skip(guildId) {
   let ServerMedia = servers.get(guildId);
   if (ServerMedia.isPlaying) {
+    if(ServerMedia.isPaused){
+      const embed = new MessageEmbed().setTitle('Resume the song before skipping!').setColor('#0000000');
+      return ServerMedia.msgChannel.send(embed);
+    }
+    servers.set(guildId, ServerMedia);
     ServerMedia.connection.dispatcher.end();
+  }
+  else{
+    const embed = new MessageEmbed().setTitle('There is no song to skip!').setColor('#0000000');
+    return ServerMedia.msgChannel.send(embed);
   }
 }
 
@@ -265,8 +312,12 @@ function stop(guildId) {
   if (ServerMedia.isPlaying) {
     ServerMedia.isPlaying = false;
     ServerMedia.songs = [];
+    if(ServerMedia.isPaused){
+      ServerMedia.connection.dispatcher.resume();
+      ServerMedia.isPaused = false;
+    }
+    servers.set(guildId, ServerMedia);
     ServerMedia.connection.dispatcher.end();
     ServerMedia.voiceChannel.leave();
-    servers.set(guildId, ServerMedia);
   }
 }
