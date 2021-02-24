@@ -2,3 +2,4 @@
 sheepbot.pem
 .vscode/settings.json
 *.pem
+config.json
