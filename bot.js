@@ -83,13 +83,11 @@ async function processUserMessage(msg) {
     })
 
     if (body.startsWith('https://www.youtube.com/watch?v=') || body.startsWith('https://music.youtube.com/watch?v=')) {
-      let vidID = body.substring(body.indexOf('=') + 1, body.length);
-      console.log('Video Link Detected: ', body);
-      console.log('vidID = ' + vidID);
+      
       const results = await ytdl.getInfo(body, { type: 'video' });
 
       let musicStructure = {
-        vidID: vidID,
+        vidID: results.videoDetails.videoId,
         title: results.videoDetails.title,
         channel: results.videoDetails.author.name,
         link: body,
@@ -104,8 +102,7 @@ async function processUserMessage(msg) {
       const result = await search(body);
 
       let i = 0;
-      while(result.all[i].type != 'video')
-        i++;
+      while(result.all[i].type != 'video'){ i++; }
 
       musicStructure = {
         vidID: result.all[i].videoId,
