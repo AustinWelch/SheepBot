@@ -274,7 +274,7 @@ async function play(guildId) {
   ServerMedia.msgChannel.send(embed);
 
   ServerMedia.isPlaying = true;
-  ServerMedia.connection.play(await ytdl(currentSong.vidID, { filter: 'audioonly', quality: 'highestaudio', highWaterMark: 1<<24  }), { seek: 0, volume: 1, type: 'opus', bitrate: 'auto', highWaterMark: 1<<15 })
+  ServerMedia.connection.play(await ytdl(currentSong.vidID, { filter: 'audioonly', quality: 'highestaudio'}), { seek: 0, type: 'opus', bitrate: 'auto', highestWaterMark: 1<<25})
     .on('finish', () => {
       if (ServerMedia.songs.length != 0) {
         console.log('Done playing, playing next song!');
