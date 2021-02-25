@@ -242,7 +242,6 @@ async function processUserMessage(msg) {
 }
 
 
-//===================  Helper Functions  =======================
 async function addMusic(musicStructure, msg, ServerMedia) {
   const results = await ytdl.getInfo(musicStructure.link, { type: 'video' });
   if (results.videoDetails.isLiveContent) {
