@@ -94,6 +94,7 @@ async function processUserMessage(msg) {
 
     if (body.startsWith('https://www.youtube.com/watch?v=') || body.startsWith('https://music.youtube.com/watch?v=') || body.startsWith('https://youtu.be/')) {
       
+    console.log('Video Link Detected: ' + body);
     const results = await ytdl.getInfo(body, { type: 'video' });
       let musicStructure = {
         vidID: results.videoDetails.videoId,
@@ -102,6 +103,10 @@ async function processUserMessage(msg) {
         link: body,
         thumbnail: results.videoDetails.thumbnails[0].url
       }
+
+      console.log('Video Found!: ' + musicStructure.link);
+      console.log('Video ID: ' + musicStructure.vidID);
+
       await addMusic(musicStructure, msg, ServerMedia);
     }
 
@@ -128,7 +133,6 @@ async function processUserMessage(msg) {
       addMusic(musicStructure, msg, ServerMedia);
     }
   }
-
 
   if (msg.content.startsWith(`${prefix}skip`)) {
     if (!msg.member.voice.channel) {
@@ -188,7 +192,7 @@ async function processUserMessage(msg) {
     }
   }
 
-  //TODO
+
   if (msg.content.startsWith(`${prefix}pause`)) {
     let ServerMedia = servers.get(msg.guild.id);
     if (ServerMedia.isPlaying){
@@ -238,7 +242,7 @@ async function processUserMessage(msg) {
 }
 
 
-//===================  Helper Functions  =======================//
+//===================  Helper Functions  =======================
 async function addMusic(musicStructure, msg, ServerMedia) {
   const results = await ytdl.getInfo(musicStructure.link, { type: 'video' });
   if (results.videoDetails.isLiveContent) {
