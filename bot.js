@@ -1,7 +1,11 @@
 const { Client, MessageEmbed } = require('discord.js');
 const { prefix, token } = require('./config.json');
 const ytdl = require("ytdl-core-discord");
-const search = require('yt-search')
+const search = require('yt-search');
+const { spawn } = require('child_process');
+let request = require(`request`);
+let fs = require(`fs`);
+
 
 const client = new Client();
 let servers = new Map();
@@ -46,6 +50,77 @@ async function processUserMessage(msg) {
     msg.channel.send(embed);
   }
 
+  if (msg.content.startsWith(`${prefix}collage`)) {
+    //if (msg.attachments.first()) {
+    let small_images_urls = get_image_urls(body);
+    console.log(small_images_urls)
+
+
+    // let img_path;
+    // for (let i = 0; i < 150; i++) {
+    //   img_path = 'images/source_images/source_img_' + i + '.png';
+    //   download(img_path, small_images_urls[i]);
+  }
+
+  //}
+
+  if (msg.content.startsWith(`${prefix}test`)) {
+   
+    gis('cats', logResults);
+
+    function logResults(error, results) {
+      if (error) {
+        console.log(error);
+      }
+      else {
+        console.log(JSON.stringify(results, null, '  '));
+      }
+    }
+  }
+
+  if (msg.content.startsWith(`${prefix}minecraft`)) {
+    if (msg.attachments.first()) {
+      let pic_path = ".\\images\\pic_" + msg.channel.id + ".png";
+      download(msg.attachments.first().url, pic_path);
+      console.log('Image downloaded!');
+      let kernal_size = 10;
+      if (!body.startsWith(`${prefix}`))
+        kernal_size = parseInt(body);
+
+      const python = spawn('python3', ["minecraft.py", pic_path, msg.channel.id, kernal_size]);
+      python.stderr.on('data', function (data) {
+        console.error(data.toString());
+      });
+      python.on('close', (code) => {
+        console.log(`Python Minecraft script closed with code: ${code}`);
+        if (code != 0) {
+          const embed = new MessageEmbed()
+            .setTitle('Conversion failed! :(')
+            .setColor('#0000000');
+          return msg.channel.send(embed);
+
+        }
+        msg.channel.send({ files: ['./images/pic_' + msg.channel.id + '_out.png'] }).then(() => {
+          try {
+            fs.unlink(pic_path, (err) => {
+              if (err) {
+                console.error(err)
+                return
+              }
+            });
+            fs.unlink('./images/pic_' + msg.channel.id + '_out.png', (err) => {
+              if (err) {
+                console.error(err)
+                return
+              }
+            });
+          } catch (error) { }
+        });
+      });
+    }
+  }
+
+
   if (msg.content.startsWith(`${prefix}play`)) {
     const voiceChannel = msg.member.voice.channel;
 
@@ -83,7 +158,7 @@ async function processUserMessage(msg) {
     })
 
     if (body.startsWith('https://www.youtube.com/watch?v=') || body.startsWith('https://music.youtube.com/watch?v=')) {
-      
+
       const results = await ytdl.getInfo(body, { type: 'video' });
 
       let musicStructure = {
@@ -102,7 +177,7 @@ async function processUserMessage(msg) {
       const result = await search(body);
 
       let i = 0;
-      while(result.all[i].type != 'video'){ i++; }
+      while (result.all[i].type != 'video') { i++; }
 
       musicStructure = {
         vidID: result.all[i].videoId,
@@ -269,4 +344,23 @@ function stop(guildId) {
     ServerMedia.voiceChannel.leave();
     servers.set(guildId, ServerMedia);
   }
+}
+
+async function download(url, pic_path) {
+  request.get(url)
+    .on('error', console.error)
+    .pipe(fs.createWriteStream(pic_path));
+}
+
+function get_image_urls(search_term) {
+  let small_images_urls = [];
+  for (let i = 1; i < 2; i++) {
+    searchImages.search(search_term, { page: i }).then(images => {
+      for (let j = 0; j < 10; j++) {
+        small_images_urls[((i - 1) * 10) + j] = images[j].thumbnail.url;
+      }
+    });
+  }
+  console.log(small_images_urls)
+  return small_images_urls;
 }
