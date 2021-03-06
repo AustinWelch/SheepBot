@@ -5,6 +5,7 @@ const search = require('yt-search');
 const { spawn } = require('child_process');
 let request = require(`request`);
 let fs = require(`fs`);
+const { Server } = require('http');
 
 
 const client = new Client();
@@ -17,6 +18,15 @@ client.on('ready', () => {
 });
 
 client.on('message', msg => {
+  if (msg.author.id == '812433186293415957'){
+    let ServerMedia = servers.get(msg.guild.id);
+    if(ServerMedia){
+      if(ServerMedia.isPlaying){
+        ServerMedia.cleanup.push(msg);
+      }
+    }
+  }
+
   if (!msg.author.bot && msg.content[0] == `${prefix}`) {
     processUserMessage(msg);
   }
@@ -42,7 +52,16 @@ async function processUserMessage(msg) {
   }
 
   if (msg.content.startsWith(`${prefix}help`)) {
-    let helpOut = "Echo: Echo your message\n\n" + "Come: Come\n\nLeave: Leave";
+    let helpOut = 
+    "**play**: Plays a song based on keywords or a youtube link\n\n" +
+    "**skip**: Skips the current song\n\n" +
+    "**stop/leave**: Stops playing music and disconnects\n\n" +
+    "**pause**: Pauses the current song\n\n" +
+    "**resume**: Resumes the current song\n\n" +
+    "**queue**: Lists the songs currently in queue\n\n" +
+    "**volume**: Sets the volume between 1 and 10\n\n" +
+    "**echoN**: Echos your message N times\n\n";
+
     const embed = new MessageEmbed()
       .setTitle('List of Commands')
       .setColor('#0000000')
@@ -64,19 +83,20 @@ async function processUserMessage(msg) {
 
   //}
 
-  if (msg.content.startsWith(`${prefix}test`)) {
-   
-    gis('cats', logResults);
+  
+  // if (msg.content.startsWith(`${prefix}test`)) {
 
-    function logResults(error, results) {
-      if (error) {
-        console.log(error);
-      }
-      else {
-        console.log(JSON.stringify(results, null, '  '));
-      }
-    }
-  }
+  //   gis('cats', logResults);
+
+  //   function logResults(error, results) {
+  //     if (error) {
+  //       console.log(error);
+  //     }
+  //     else {
+  //       console.log(JSON.stringify(results, null, '  '));
+  //     }
+  //   }
+  // }
 
   if (msg.content.startsWith(`${prefix}minecraft`)) {
     if (msg.attachments.first()) {
@@ -139,20 +159,23 @@ async function processUserMessage(msg) {
     if (!ServerMedia) {
       ServerMedia = {
         isPlaying: false,
+        isPaused: false,
         songs: [],
         volume: 5,
         voiceChannel: null,
         connection: null,
         guildId: msg.guild.id,
-        msgChannel: msg.channel
+        msgChannel: msg.channel,
+        cleanup: []
       };
       servers.set(msg.guild.id, ServerMedia);
     }
+    ServerMedia.msgChannel = msg.channel;
+    ServerMedia.cleanup.push(msg);
 
     let connection;
     await voiceChannel.join().then(newConnection => {
       connection = newConnection;
-
       ServerMedia.voiceChannel = voiceChannel;
       ServerMedia.connection = connection;
     })
@@ -201,6 +224,8 @@ async function processUserMessage(msg) {
       const embed = new MessageEmbed().setTitle('You have to be in a voice channel to skip music!').setColor('#00000000');
       return msg.channel.send(embed);
     }
+    let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.cleanup.push(msg);
     skip(msg.guild.id);
   }
 
@@ -209,15 +234,20 @@ async function processUserMessage(msg) {
       const embed = new MessageEmbed().setTitle('You have to be in a voice channel to stop music!').setColor('#0000000');
       return msg.channel.send(embed);
     }
+    let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.cleanup.push(msg);
     stop(msg.guild.id);
   }
 
   if (msg.content.startsWith(`${prefix}leave`)) {
+    let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.cleanup.push(msg);
     stop(msg.guild.id);
   }
 
   if (msg.content.startsWith(`${prefix}volume`)) {
     let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.msgChannel = msg.channel;
     let newVolume = parseInt(body);
 
     if (!ServerMedia) {
@@ -239,6 +269,8 @@ async function processUserMessage(msg) {
 
   if (msg.content.startsWith(`${prefix}queue`)) {
     let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.msgChannel = msg.channel;
+    ServerMedia.cleanup.push(msg);
 
     if (ServerMedia.songs.length > 0) {
       let queueList = "";
@@ -254,29 +286,60 @@ async function processUserMessage(msg) {
     }
   }
 
-  //TODO
-  // if (msg.content.startsWith(`${prefix}pause`)) {
-  //   let ServerMedia = servers.get(msg.guild.id);
-  //   if (ServerMedia.isPlaying)
-  //     ServerMedia.connection.dispatcher.pause();
-  // }
+  if (msg.content.startsWith(`${prefix}pause`)) {
+    let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.msgChannel = msg.channel;
+    ServerMedia.cleanup.push(msg);
 
-  // if (msg.content.startsWith(`${prefix}resume`)) {
-  //   let ServerMedia = servers.get(msg.guild.id);
-  //   if (ServerMedia.isPlaying)
-  //     ServerMedia.connection.dispatcher.resume();
-  // }
+    if (ServerMedia.isPlaying) {
+      if (!ServerMedia.isPaused) {
+        ServerMedia.isPaused = true;
+        const embed = new MessageEmbed().setTitle('Song paused!').setColor('#0000000');
+        ServerMedia.msgChannel.send(embed);
+        ServerMedia.connection.dispatcher.pause();
+      }
+      else {
+        const embed = new MessageEmbed().setTitle('Song is already paused!').setColor('#0000000');
+        return msg.channel.send(embed);
+      }
+    }
+    else {
+      const embed = new MessageEmbed().setTitle('Cannot pause a song that is not playing!').setColor('#0000000');
+      return msg.channel.send(embed);
+    }
+  }
 
-  /**
-   * TODO:
+  if (msg.content.startsWith(`${prefix}resume`)) {
+    let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.msgChannel = msg.channel;
+    ServerMedia.cleanup.push(msg);
+
+    if (ServerMedia.isPlaying) {
+      if (ServerMedia.isPaused) {
+        ServerMedia.isPaused = false;
+        const embed = new MessageEmbed().setTitle('Resuming song!').setColor('#0000000');
+        ServerMedia.msgChannel.send(embed);
+        ServerMedia.connection.dispatcher.resume();
+      }
+      else {
+        const embed = new MessageEmbed().setTitle('Song is already playing!').setColor('#0000000');
+        return msg.channel.send(embed);
+      }
+    }
+    else {
+      const embed = new MessageEmbed().setTitle('Cannot resume a song that is not playing!').setColor('#0000000');
+      return msg.channel.send(embed);
+    }
+  }
+
+   /* TODO:
    * + Playlists
    * + Queue Logic (Shuffle, Repeat)
-   * 
    */
 }
 
 
-//===================  Helper Functions  =======================//
+
 async function addMusic(musicStructure, msg, ServerMedia) {
   const results = await ytdl.getInfo(musicStructure.link, { type: 'video' });
   if (results.videoDetails.isLiveContent) {
@@ -319,9 +382,11 @@ async function play(guildId) {
         play(guildId);
       }
       else {
-        console.log('Done playing, no next song and leaving!')
+        console.log('Done playing, leaving!')
         ServerMedia.voiceChannel.leave();
         ServerMedia.isPlaying = false;
+        cleanupMessages(ServerMedia.cleanup);
+        ServerMedia.cleanup = [];
         servers.set(guildId, ServerMedia);
         return;
       }
@@ -344,6 +409,12 @@ function stop(guildId) {
     ServerMedia.voiceChannel.leave();
     servers.set(guildId, ServerMedia);
   }
+}
+
+function cleanupMessages(cleanupArray){
+  cleanupArray.forEach((msg)=>{
+    msg.delete();
+  })
 }
 
 async function download(url, pic_path) {
