@@ -189,6 +189,10 @@ async function processUserMessage(msg) {
         link: body,
         thumbnail: results.videoDetails.thumbnails[0].url
       }
+
+      console.log('Video Found!: ' + musicStructure.link);
+      console.log('Video ID: ' + musicStructure.vidID);
+
       await addMusic(musicStructure, msg, ServerMedia);
     }
 
@@ -215,7 +219,6 @@ async function processUserMessage(msg) {
       addMusic(musicStructure, msg, ServerMedia);
     }
   }
-
 
   if (msg.content.startsWith(`${prefix}skip`)) {
     if (!msg.member.voice.channel) {
@@ -319,11 +322,13 @@ async function processUserMessage(msg) {
         ServerMedia.msgChannel.send(embed);
         ServerMedia.connection.dispatcher.resume();
       }
+
       else {
         const embed = new MessageEmbed().setTitle('Song is already playing!').setColor('#0000000');
         return msg.channel.send(embed);
       }
     }
+
     else {
       const embed = new MessageEmbed().setTitle('Cannot resume a song that is not playing!').setColor('#0000000');
       return msg.channel.send(embed);
@@ -335,7 +340,6 @@ async function processUserMessage(msg) {
    * + Queue Logic (Shuffle, Repeat)
    */
 }
-
 
 
 async function addMusic(musicStructure, msg, ServerMedia) {
@@ -352,9 +356,9 @@ async function addMusic(musicStructure, msg, ServerMedia) {
   }
   else {
     const embed = new MessageEmbed()
-      .setTitle('Added Song to Queue')
+      .setTitle('Added Song to Queue: '+ musicStructure.title)
       .setColor('#0000000')
-      .setDescription(musicStructure.title + '\nby ' + musicStructure.channel + '\n' + musicStructure.link).setThumbnail(musicStructure.thumbnail);
+      .setDescription('by ' + musicStructure.channel + '\n' + musicStructure.link).setThumbnail(musicStructure.thumbnail);
 
     msg.channel.send(embed);
     servers.set(msg.guild.id, ServerMedia);
@@ -366,17 +370,18 @@ async function play(guildId) {
 
   let currentSong = ServerMedia.songs.shift();
   const embed = new MessageEmbed()
-    .setTitle('Now playing: ' + currentSong.title)
+    .setTitle('Now Playing: ' + currentSong.title)
     .setColor('#0000000')
     .setDescription('by ' + currentSong.channel + '\n' + currentSong.link)
     .setThumbnail(currentSong.thumbnail);
   ServerMedia.msgChannel.send(embed);
 
   ServerMedia.isPlaying = true;
-  ServerMedia.connection.play(await ytdl(currentSong.vidID, { filter: 'audioonly', quality: 'highestaudio' }), { seek: 0, volume: 1, type: 'opus', bitrate: 'auto' })
+  ServerMedia.connection.play(await ytdl(currentSong.vidID, { filter: 'audioonly', quality: 'highestaudio'}), { seek: 0, type: 'opus', bitrate: 'auto', highestWaterMark: 1<<25})
     .on('finish', () => {
       if (ServerMedia.songs.length != 0) {
         console.log('Done playing, playing next song!');
+        servers.set(guildId, ServerMedia);
         play(guildId);
       }
       else {
@@ -394,7 +399,16 @@ async function play(guildId) {
 function skip(guildId) {
   let ServerMedia = servers.get(guildId);
   if (ServerMedia.isPlaying) {
+    if(ServerMedia.isPaused){
+      const embed = new MessageEmbed().setTitle('Resume the song before skipping!').setColor('#0000000');
+      return ServerMedia.msgChannel.send(embed);
+    }
+    servers.set(guildId, ServerMedia);
     ServerMedia.connection.dispatcher.end();
+  }
+  else{
+    const embed = new MessageEmbed().setTitle('There is no song to skip!').setColor('#0000000');
+    return ServerMedia.msgChannel.send(embed);
   }
 }
 
@@ -403,9 +417,13 @@ function stop(guildId) {
   if (ServerMedia.isPlaying) {
     ServerMedia.isPlaying = false;
     ServerMedia.songs = [];
+    if(ServerMedia.isPaused){
+      ServerMedia.connection.dispatcher.resume();
+      ServerMedia.isPaused = false;
+    }
+    servers.set(guildId, ServerMedia);
     ServerMedia.connection.dispatcher.end();
     ServerMedia.voiceChannel.leave();
-    servers.set(guildId, ServerMedia);
   }
 }
 
