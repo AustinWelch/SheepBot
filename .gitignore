@@ -1,3 +1,5 @@
 
-sheepbot.pem
 .vscode/settings.json
+/node_modules
+config.json
+*.pem

@@ -5,8 +5,6 @@ const search = require('yt-search');
 const { spawn } = require('child_process');
 let request = require(`request`);
 let fs = require(`fs`);
-const { Server } = require('http');
-
 
 const client = new Client();
 let servers = new Map();
