@@ -1,7 +1,10 @@
 const { Client, MessageEmbed } = require('discord.js');
 const { prefix, token } = require('./config.json');
 const ytdl = require("ytdl-core-discord");
-const search = require('yt-search')
+const search = require('yt-search');
+const { spawn } = require('child_process');
+let request = require(`request`);
+let fs = require(`fs`);
 
 const client = new Client();
 let servers = new Map();
@@ -13,6 +16,15 @@ client.on('ready', () => {
 });
 
 client.on('message', msg => {
+  if (msg.author.id == '812433186293415957'){
+    let ServerMedia = servers.get(msg.guild.id);
+    if(ServerMedia){
+      if(ServerMedia.isPlaying){
+        ServerMedia.cleanup.push(msg);
+      }
+    }
+  }
+
   if (!msg.author.bot && msg.content[0] == `${prefix}`) {
     processUserMessage(msg);
   }
@@ -55,6 +67,78 @@ async function processUserMessage(msg) {
     msg.channel.send(embed);
   }
 
+  if (msg.content.startsWith(`${prefix}collage`)) {
+    //if (msg.attachments.first()) {
+    let small_images_urls = get_image_urls(body);
+    console.log(small_images_urls)
+
+
+    // let img_path;
+    // for (let i = 0; i < 150; i++) {
+    //   img_path = 'images/source_images/source_img_' + i + '.png';
+    //   download(img_path, small_images_urls[i]);
+  }
+
+  //}
+
+  
+  // if (msg.content.startsWith(`${prefix}test`)) {
+
+  //   gis('cats', logResults);
+
+  //   function logResults(error, results) {
+  //     if (error) {
+  //       console.log(error);
+  //     }
+  //     else {
+  //       console.log(JSON.stringify(results, null, '  '));
+  //     }
+  //   }
+  // }
+
+  if (msg.content.startsWith(`${prefix}minecraft`)) {
+    if (msg.attachments.first()) {
+      let pic_path = ".\\images\\pic_" + msg.channel.id + ".png";
+      download(msg.attachments.first().url, pic_path);
+      console.log('Image downloaded!');
+      let kernal_size = 10;
+      if (!body.startsWith(`${prefix}`))
+        kernal_size = parseInt(body);
+
+      const python = spawn('python3', ["minecraft.py", pic_path, msg.channel.id, kernal_size]);
+      python.stderr.on('data', function (data) {
+        console.error(data.toString());
+      });
+      python.on('close', (code) => {
+        console.log(`Python Minecraft script closed with code: ${code}`);
+        if (code != 0) {
+          const embed = new MessageEmbed()
+            .setTitle('Conversion failed! :(')
+            .setColor('#0000000');
+          return msg.channel.send(embed);
+
+        }
+        msg.channel.send({ files: ['./images/pic_' + msg.channel.id + '_out.png'] }).then(() => {
+          try {
+            fs.unlink(pic_path, (err) => {
+              if (err) {
+                console.error(err)
+                return
+              }
+            });
+            fs.unlink('./images/pic_' + msg.channel.id + '_out.png', (err) => {
+              if (err) {
+                console.error(err)
+                return
+              }
+            });
+          } catch (error) { }
+        });
+      });
+    }
+  }
+
+
   if (msg.content.startsWith(`${prefix}play`)) {
     const voiceChannel = msg.member.voice.channel;
 
@@ -79,23 +163,25 @@ async function processUserMessage(msg) {
         voiceChannel: null,
         connection: null,
         guildId: msg.guild.id,
-        msgChannel: msg.channel
+        msgChannel: msg.channel,
+        cleanup: []
       };
       servers.set(msg.guild.id, ServerMedia);
     }
+    ServerMedia.msgChannel = msg.channel;
+    ServerMedia.cleanup.push(msg);
 
     let connection;
     await voiceChannel.join().then(newConnection => {
       connection = newConnection;
-
       ServerMedia.voiceChannel = voiceChannel;
       ServerMedia.connection = connection;
     })
 
     if (body.startsWith('https://www.youtube.com/watch?v=') || body.startsWith('https://music.youtube.com/watch?v=') || body.startsWith('https://youtu.be/')) {
-      
-    console.log('Video Link Detected: ' + body);
-    const results = await ytdl.getInfo(body, { type: 'video' });
+
+      const results = await ytdl.getInfo(body, { type: 'video' });
+
       let musicStructure = {
         vidID: results.videoDetails.videoId,
         title: results.videoDetails.title,
@@ -116,7 +202,7 @@ async function processUserMessage(msg) {
       const result = await search(body);
 
       let i = 0;
-      while(result.all[i].type != 'video'){ i++; }
+      while (result.all[i].type != 'video') { i++; }
 
       musicStructure = {
         vidID: result.all[i].videoId,
@@ -139,6 +225,8 @@ async function processUserMessage(msg) {
       const embed = new MessageEmbed().setTitle('You have to be in a voice channel to skip music!').setColor('#00000000');
       return msg.channel.send(embed);
     }
+    let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.cleanup.push(msg);
     skip(msg.guild.id);
   }
 
@@ -147,15 +235,20 @@ async function processUserMessage(msg) {
       const embed = new MessageEmbed().setTitle('You have to be in a voice channel to stop music!').setColor('#0000000');
       return msg.channel.send(embed);
     }
+    let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.cleanup.push(msg);
     stop(msg.guild.id);
   }
 
   if (msg.content.startsWith(`${prefix}leave`)) {
+    let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.cleanup.push(msg);
     stop(msg.guild.id);
   }
 
   if (msg.content.startsWith(`${prefix}volume`)) {
     let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.msgChannel = msg.channel;
     let newVolume = parseInt(body);
 
     if (!ServerMedia) {
@@ -177,6 +270,8 @@ async function processUserMessage(msg) {
 
   if (msg.content.startsWith(`${prefix}queue`)) {
     let ServerMedia = servers.get(msg.guild.id);
+    ServerMedia.msgChannel = msg.channel;
+    ServerMedia.cleanup.push(msg);
 
     if (ServerMedia.songs.length > 0) {
       let queueList = "";
@@ -192,22 +287,24 @@ async function processUserMessage(msg) {
     }
   }
 
-
   if (msg.content.startsWith(`${prefix}pause`)) {
     let ServerMedia = servers.get(msg.guild.id);
-    if (ServerMedia.isPlaying){
-      if(!ServerMedia.isPaused){
+    ServerMedia.msgChannel = msg.channel;
+    ServerMedia.cleanup.push(msg);
+
+    if (ServerMedia.isPlaying) {
+      if (!ServerMedia.isPaused) {
         ServerMedia.isPaused = true;
         const embed = new MessageEmbed().setTitle('Song paused!').setColor('#0000000');
         ServerMedia.msgChannel.send(embed);
         ServerMedia.connection.dispatcher.pause();
       }
-      else{
+      else {
         const embed = new MessageEmbed().setTitle('Song is already paused!').setColor('#0000000');
         return msg.channel.send(embed);
       }
     }
-    else{
+    else {
       const embed = new MessageEmbed().setTitle('Cannot pause a song that is not playing!').setColor('#0000000');
       return msg.channel.send(embed);
     }
@@ -215,29 +312,32 @@ async function processUserMessage(msg) {
 
   if (msg.content.startsWith(`${prefix}resume`)) {
     let ServerMedia = servers.get(msg.guild.id);
-    if (ServerMedia.isPlaying){
-      if(ServerMedia.isPaused){
+    ServerMedia.msgChannel = msg.channel;
+    ServerMedia.cleanup.push(msg);
+
+    if (ServerMedia.isPlaying) {
+      if (ServerMedia.isPaused) {
         ServerMedia.isPaused = false;
         const embed = new MessageEmbed().setTitle('Resuming song!').setColor('#0000000');
         ServerMedia.msgChannel.send(embed);
         ServerMedia.connection.dispatcher.resume();
       }
-      else{
+
+      else {
         const embed = new MessageEmbed().setTitle('Song is already playing!').setColor('#0000000');
         return msg.channel.send(embed);
       }
     }
-    else{
+
+    else {
       const embed = new MessageEmbed().setTitle('Cannot resume a song that is not playing!').setColor('#0000000');
       return msg.channel.send(embed);
     }
   }
 
-  /**
-   * TODO:
+   /* TODO:
    * + Playlists
    * + Queue Logic (Shuffle, Repeat)
-   * 
    */
 }
 
@@ -285,9 +385,11 @@ async function play(guildId) {
         play(guildId);
       }
       else {
-        console.log('Done playing, no next song and leaving!')
+        console.log('Done playing, leaving!')
         ServerMedia.voiceChannel.leave();
         ServerMedia.isPlaying = false;
+        cleanupMessages(ServerMedia.cleanup);
+        ServerMedia.cleanup = [];
         servers.set(guildId, ServerMedia);
         return;
       }
@@ -323,4 +425,29 @@ function stop(guildId) {
     ServerMedia.connection.dispatcher.end();
     ServerMedia.voiceChannel.leave();
   }
+}
+
+function cleanupMessages(cleanupArray){
+  cleanupArray.forEach((msg)=>{
+    msg.delete();
+  })
+}
+
+async function download(url, pic_path) {
+  request.get(url)
+    .on('error', console.error)
+    .pipe(fs.createWriteStream(pic_path));
+}
+
+function get_image_urls(search_term) {
+  let small_images_urls = [];
+  for (let i = 1; i < 2; i++) {
+    searchImages.search(search_term, { page: i }).then(images => {
+      for (let j = 0; j < 10; j++) {
+        small_images_urls[((i - 1) * 10) + j] = images[j].thumbnail.url;
+      }
+    });
+  }
+  console.log(small_images_urls)
+  return small_images_urls;
 }
