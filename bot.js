@@ -178,7 +178,7 @@ async function processUserMessage(msg) {
       ServerMedia.connection = connection;
     })
 
-    if (body.startsWith('https://www.youtube.com/watch?v=') || body.startsWith('https://music.youtube.com/watch?v=')) {
+    if (body.startsWith('https://www.youtube.com/watch?v=') || body.startsWith('https://music.youtube.com/watch?v=') || body.startsWith('https://youtu.be/')) {
 
       const results = await ytdl.getInfo(body, { type: 'video' });
 
